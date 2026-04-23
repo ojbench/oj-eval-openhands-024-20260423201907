@@ -286,20 +286,20 @@ int main() {
     std::cin.tie(nullptr);
     
     Deque<int> dq;
-    std::string line;
+    int n;
+    std::cin >> n;
     
-    while (std::getline(std::cin, line)) {
-        std::istringstream iss(line);
+    for (int i = 0; i < n; ++i) {
         std::string command;
-        iss >> command;
+        std::cin >> command;
         
         if (command == "push_front") {
             int x;
-            iss >> x;
+            std::cin >> x;
             dq.push_front(x);
         } else if (command == "push_back") {
             int x;
-            iss >> x;
+            std::cin >> x;
             dq.push_back(x);
         } else if (command == "pop_front") {
             if (!dq.empty()) {
@@ -313,27 +313,18 @@ int main() {
             if (!dq.empty()) {
                 std::cout << dq.front() << "\n";
             } else {
-                std::cout << "empty\n";
+                std::cout << "-1\n";
             }
         } else if (command == "back") {
             if (!dq.empty()) {
                 std::cout << dq.back() << "\n";
             } else {
-                std::cout << "empty\n";
+                std::cout << "-1\n";
             }
         } else if (command == "size") {
             std::cout << dq.size() << "\n";
         } else if (command == "empty") {
-            std::cout << (dq.empty() ? "true" : "false") << "\n";
-        } else if (command == "print") {
-            for (const auto& val : dq) {
-                std::cout << val << " ";
-            }
-            std::cout << "\n";
-        } else if (command == "clear") {
-            dq.clear();
-        } else if (command == "exit") {
-            break;
+            std::cout << (dq.empty() ? "1" : "0") << "\n";
         }
     }
     
