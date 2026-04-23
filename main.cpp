@@ -3,97 +3,39 @@
 #include <vector>
 #include <string>
 #include <sstream>
-#include <memory>
-#include <algorithm>
-#include <iterator>
 
 template<typename T>
 class Deque {
 private:
-    static const size_t CHUNK_SIZE = 8;
-    static const size_t INITIAL_MAP_SIZE = 8;
+    std::vector<T> data_;
+    size_t front_idx_;
+    size_t back_idx_;
+    size_t capacity_;
     
-    T** map_;
-    size_t map_size_;
-    size_t start_node_;
-    size_t start_offset_;
-    size_t end_node_;
-    size_t end_offset_;
-    size_t size_;
-    
-    void create_map(size_t map_size) {
-        map_size_ = map_size;
-        map_ = new T*[map_size_];
-        for (size_t i = 0; i < map_size_; ++i) {
-            map_[i] = nullptr;
-        }
-    }
-    
-    void create_node(size_t node_index) {
-        if (map_[node_index] == nullptr) {
-            map_[node_index] = new T[CHUNK_SIZE];
-        }
-    }
-    
-    void destroy_node(size_t node_index) {
-        if (map_[node_index] != nullptr) {
-            delete[] map_[node_index];
-            map_[node_index] = nullptr;
-        }
-    }
-    
-    void expand_map() {
-        size_t new_map_size = map_size_ * 2;
-        T** new_map = new T*[new_map_size];
+    void resize() {
+        size_t new_capacity = capacity_ * 2;
+        std::vector<T> new_data(new_capacity);
         
-        size_t new_start_node = new_map_size / 4;
-        
-        for (size_t i = 0; i < new_map_size; ++i) {
-            new_map[i] = nullptr;
+        size_t j = 0;
+        if (!empty()) {
+            size_t i = front_idx_;
+            do {
+                new_data[j++] = data_[i];
+                i = (i + 1) % capacity_;
+            } while (i != back_idx_);
         }
         
-        for (size_t i = 0; i < map_size_; ++i) {
-            new_map[new_start_node + i] = map_[i];
-        }
-        
-        delete[] map_;
-        map_ = new_map;
-        map_size_ = new_map_size;
-        start_node_ = new_start_node;
-        end_node_ = new_start_node + map_size_ / 2 - 1;
-    }
-    
-    void shrink_map() {
-        if (map_size_ <= INITIAL_MAP_SIZE) return;
-        
-        size_t new_map_size = map_size_ / 2;
-        T** new_map = new T*[new_map_size];
-        
-        size_t new_start_node = new_map_size / 4;
-        
-        for (size_t i = 0; i < new_map_size; ++i) {
-            new_map[i] = nullptr;
-        }
-        
-        for (size_t i = 0; i < map_size_; ++i) {
-            if (map_[i] != nullptr) {
-                new_map[new_start_node + i] = map_[i];
-            }
-        }
-        
-        delete[] map_;
-        map_ = new_map;
-        map_size_ = new_map_size;
-        start_node_ = new_start_node;
-        end_node_ = new_start_node + map_size_ / 2 - 1;
+        data_ = std::move(new_data);
+        front_idx_ = 0;
+        back_idx_ = j;
+        capacity_ = new_capacity;
     }
     
 public:
     class iterator {
     private:
         Deque* deque_;
-        size_t node_;
-        size_t offset_;
+        size_t idx_;
         
     public:
         using iterator_category = std::random_access_iterator_tag;
@@ -102,24 +44,20 @@ public:
         using pointer = T*;
         using reference = T&;
         
-        iterator() : deque_(nullptr), node_(0), offset_(0) {}
-        
-        iterator(Deque* deque, size_t node, size_t offset) 
-            : deque_(deque), node_(node), offset_(offset) {}
+        iterator() : deque_(nullptr), idx_(0) {}
+        iterator(Deque* deque, size_t idx) : deque_(deque), idx_(idx) {}
         
         reference operator*() const {
-            return deque_->map_[node_][offset_];
+            size_t actual_idx = (deque_->front_idx_ + idx_) % deque_->capacity_;
+            return deque_->data_[actual_idx];
         }
         
         pointer operator->() const {
-            return &deque_->map_[node_][offset_];
+            return &(**this);
         }
         
         iterator& operator++() {
-            if (++offset_ == CHUNK_SIZE) {
-                offset_ = 0;
-                ++node_;
-            }
+            ++idx_;
             return *this;
         }
         
@@ -130,12 +68,7 @@ public:
         }
         
         iterator& operator--() {
-            if (offset_ == 0) {
-                offset_ = CHUNK_SIZE - 1;
-                --node_;
-            } else {
-                --offset_;
-            }
+            --idx_;
             return *this;
         }
         
@@ -146,14 +79,13 @@ public:
         }
         
         iterator& operator+=(difference_type n) {
-            difference_type total_offset = node_ * CHUNK_SIZE + offset_ + n;
-            node_ = total_offset / CHUNK_SIZE;
-            offset_ = total_offset % CHUNK_SIZE;
+            idx_ += n;
             return *this;
         }
         
         iterator& operator-=(difference_type n) {
-            return *this += (-n);
+            idx_ -= n;
+            return *this;
         }
         
         iterator operator+(difference_type n) const {
@@ -167,7 +99,7 @@ public:
         }
         
         difference_type operator-(const iterator& other) const {
-            return (node_ * CHUNK_SIZE + offset_) - (other.node_ * CHUNK_SIZE + other.offset_);
+            return idx_ - other.idx_;
         }
         
         reference operator[](difference_type n) const {
@@ -175,7 +107,7 @@ public:
         }
         
         bool operator==(const iterator& other) const {
-            return node_ == other.node_ && offset_ == other.offset_;
+            return deque_ == other.deque_ && idx_ == other.idx_;
         }
         
         bool operator!=(const iterator& other) const {
@@ -183,7 +115,7 @@ public:
         }
         
         bool operator<(const iterator& other) const {
-            return node_ < other.node_ || (node_ == other.node_ && offset_ < other.offset_);
+            return idx_ < other.idx_;
         }
         
         bool operator>(const iterator& other) const {
@@ -201,190 +133,114 @@ public:
         friend class Deque;
     };
     
-    Deque() {
-        create_map(INITIAL_MAP_SIZE);
-        start_node_ = map_size_ / 2;
-        start_offset_ = CHUNK_SIZE / 2;
-        end_node_ = start_node_;
-        end_offset_ = start_offset_;
-        size_ = 0;
+    Deque() : front_idx_(0), back_idx_(0), capacity_(8) {
+        data_.resize(capacity_);
     }
     
-    ~Deque() {
-        clear();
-        delete[] map_;
-    }
+    ~Deque() = default;
     
-    Deque(const Deque& other) : Deque() {
-        for (const auto& item : other) {
-            push_back(item);
-        }
-    }
+    Deque(const Deque& other) : data_(other.data_), front_idx_(other.front_idx_), 
+                               back_idx_(other.back_idx_), capacity_(other.capacity_) {}
     
     Deque& operator=(const Deque& other) {
         if (this != &other) {
-            clear();
-            for (const auto& item : other) {
-                push_back(item);
-            }
+            data_ = other.data_;
+            front_idx_ = other.front_idx_;
+            back_idx_ = other.back_idx_;
+            capacity_ = other.capacity_;
         }
         return *this;
     }
     
     void push_front(const T& value) {
-        if (start_offset_ == 0) {
-            if (start_node_ == 0) {
-                expand_map();
-            }
-            --start_node_;
-            start_offset_ = CHUNK_SIZE - 1;
-        } else {
-            --start_offset_;
+        if ((back_idx_ + 1) % capacity_ == front_idx_) {
+            resize();
         }
         
-        create_node(start_node_);
-        map_[start_node_][start_offset_] = value;
-        
-        if (size_ == 0) {
-            end_node_ = start_node_;
-            end_offset_ = start_offset_;
-        }
-        
-        ++size_;
+        front_idx_ = (front_idx_ - 1 + capacity_) % capacity_;
+        data_[front_idx_] = value;
     }
     
     void push_back(const T& value) {
-        create_node(end_node_);
-        map_[end_node_][end_offset_] = value;
-        
-        if (size_ == 0) {
-            start_node_ = end_node_;
-            start_offset_ = end_offset_;
+        if ((back_idx_ + 1) % capacity_ == front_idx_) {
+            resize();
         }
         
-        ++size_;
-        
-        if (++end_offset_ == CHUNK_SIZE) {
-            end_offset_ = 0;
-            if (++end_node_ == map_size_) {
-                expand_map();
-            }
-        }
+        data_[back_idx_] = value;
+        back_idx_ = (back_idx_ + 1) % capacity_;
     }
     
     void pop_front() {
-        if (size_ == 0) return;
-        
-        map_[start_node_][start_offset_].~T();
-        
-        if (++start_offset_ == CHUNK_SIZE) {
-            start_offset_ = 0;
-            ++start_node_;
-        }
-        
-        --size_;
-        
-        if (size_ == 0) {
-            end_node_ = start_node_;
-            end_offset_ = start_offset_;
-        }
+        if (empty()) return;
+        front_idx_ = (front_idx_ + 1) % capacity_;
     }
     
     void pop_back() {
-        if (size_ == 0) return;
-        
-        if (end_offset_ == 0) {
-            end_offset_ = CHUNK_SIZE - 1;
-            --end_node_;
-        } else {
-            --end_offset_;
-        }
-        
-        map_[end_node_][end_offset_].~T();
-        
-        --size_;
-        
-        if (size_ == 0) {
-            start_node_ = end_node_;
-            start_offset_ = end_offset_;
-        }
+        if (empty()) return;
+        back_idx_ = (back_idx_ - 1 + capacity_) % capacity_;
     }
     
     T& front() {
-        return map_[start_node_][start_offset_];
+        return data_[front_idx_];
     }
     
     const T& front() const {
-        return map_[start_node_][start_offset_];
+        return data_[front_idx_];
     }
     
     T& back() {
-        if (end_offset_ == 0) {
-            return map_[end_node_ - 1][CHUNK_SIZE - 1];
-        } else {
-            return map_[end_node_][end_offset_ - 1];
-        }
+        return data_[(back_idx_ - 1 + capacity_) % capacity_];
     }
     
     const T& back() const {
-        if (end_offset_ == 0) {
-            return map_[end_node_ - 1][CHUNK_SIZE - 1];
-        } else {
-            return map_[end_node_][end_offset_ - 1];
-        }
+        return data_[(back_idx_ - 1 + capacity_) % capacity_];
     }
     
     T& operator[](size_t index) {
-        size_t total_offset = start_node_ * CHUNK_SIZE + start_offset_ + index;
-        size_t node = total_offset / CHUNK_SIZE;
-        size_t offset = total_offset % CHUNK_SIZE;
-        return map_[node][offset];
+        return data_[(front_idx_ + index) % capacity_];
     }
     
     const T& operator[](size_t index) const {
-        size_t total_offset = start_node_ * CHUNK_SIZE + start_offset_ + index;
-        size_t node = total_offset / CHUNK_SIZE;
-        size_t offset = total_offset % CHUNK_SIZE;
-        return map_[node][offset];
+        return data_[(front_idx_ + index) % capacity_];
     }
     
     T& at(size_t index) {
-        if (index >= size_) {
+        if (index >= size()) {
             throw std::out_of_range("Deque index out of range");
         }
         return operator[](index);
     }
     
     const T& at(size_t index) const {
-        if (index >= size_) {
+        if (index >= size()) {
             throw std::out_of_range("Deque index out of range");
         }
         return operator[](index);
     }
     
     bool empty() const {
-        return size_ == 0;
+        return front_idx_ == back_idx_;
     }
     
     size_t size() const {
-        return size_;
+        if (back_idx_ >= front_idx_) {
+            return back_idx_ - front_idx_;
+        } else {
+            return capacity_ - front_idx_ + back_idx_;
+        }
     }
     
     void clear() {
-        while (!empty()) {
-            pop_front();
-        }
+        front_idx_ = 0;
+        back_idx_ = 0;
     }
     
     iterator begin() {
-        return iterator(this, start_node_, start_offset_);
+        return iterator(this, 0);
     }
     
     iterator end() {
-        if (size_ == 0) {
-            return iterator(this, start_node_, start_offset_);
-        }
-        return iterator(this, end_node_, end_offset_);
+        return iterator(this, size());
     }
     
     iterator insert(iterator pos, const T& value) {
@@ -393,21 +249,17 @@ public:
             return begin();
         } else if (pos == end()) {
             push_back(value);
-            return iterator(this, end_node_, end_offset_ - 1);
+            return iterator(this, size() - 1);
         } else {
-            Deque temp;
-            iterator it = begin();
-            while (it != pos) {
-                temp.push_back(*it);
-                ++it;
+            size_t insert_pos = pos.idx_;
+            push_back(back());
+            
+            for (size_t i = size() - 1; i > insert_pos; --i) {
+                (*this)[i] = (*this)[i - 1];
             }
-            temp.push_back(value);
-            while (it != end()) {
-                temp.push_back(*it);
-                ++it;
-            }
-            *this = temp;
-            return iterator(this, start_node_, start_offset_ + (pos - begin()));
+            
+            (*this)[insert_pos] = value;
+            return iterator(this, insert_pos);
         }
     }
     
@@ -419,19 +271,12 @@ public:
             pop_back();
             return end();
         } else {
-            Deque temp;
-            iterator it = begin();
-            while (it != pos) {
-                temp.push_back(*it);
-                ++it;
+            size_t erase_pos = pos.idx_;
+            for (size_t i = erase_pos; i < size() - 1; ++i) {
+                (*this)[i] = (*this)[i + 1];
             }
-            ++it;
-            while (it != end()) {
-                temp.push_back(*it);
-                ++it;
-            }
-            *this = temp;
-            return iterator(this, start_node_, start_offset_ + (pos - begin()));
+            pop_back();
+            return iterator(this, erase_pos);
         }
     }
 };
